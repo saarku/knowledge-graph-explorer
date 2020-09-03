@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+<title>Knowledge Graph Visualizer</title>
+<style type="text/css">
+    body, select {
+      font: 10pt sans;
+    }
+
+    table.legend_table {
+      font-size: 11px;
+      border-width:1px;
+      border-color:#d3d3d3;
+      border-style:solid;
+    }
+
+    table.legend_table,td {
+      border-width:1px;
+      border-color:#d3d3d3;
+      border-style:solid;
+      padding: 2px;
+    }
+
+    div.table_content {
+      width:80px;
+      text-align:center;
+    }
+
+    div.table_description {
+      width:100px;
+    }
+
+    #operation {
+      font-size:28px;
+    }
+
+    #mynetwork {
+        width: 1000px;
+        height: 600px;
+        border: 1px solid lightgray;
+    }
+
+    #operation {
+      font-size:28px;
+    }
+
+    #network-popUp {
+      display:none;
+      position:absolute;
+      top:350px;
+      left:170px;
+      z-index:299;
+      width:200px;
+      height:40px;
+      background-color: #f9f9f9;
+      border-style:solid;
+      border-width:3px;
+      border-color: #5394ed;
+      padding:10px;
+      text-align: center;
+    }
+</style>
+
+<script type="text/javascript">
+var URL="http://0.0.0.0:8097/";
+var colorList = ["#00FFFF", "#FAEBD7", "#5F9EA0", "#B8860B", "#FF8C00", "#FF1493", "#FFD700", "#FFA07A", "#F5DEB3", "#8A2BE2", "#0000FF"];
+var colors_map = {};
+var non_rel_color = "#FF0000";
+var rel_color = "#00FF00";
+var rel_words = {};
+var non_rel_words = {};
+var expansion_words = [];
+var query = "";
+var qid = "-1";
+var indexes = [];
+var history_expansion = [];
+
+var get_results = function(){
+    $(".searchResultsContainer").empty();
+
+    $.ajax({
+        type: 'POST',
+        url: URL + "search/",
+        contentType: "applicaton/json; charset=utf-8",
+        data: JSON.stringify({query: query, expansion: expansion_words, qid: qid}),
+        success: function(resultData)
+        {
+            history_expansion = expansion_words;
+            $(".searchResultsContainer").append(resultData.clusterline);
+            for (var i=0; i < resultData.titles.length; i++)
+            {
+                $(".searchResultsContainer").append("<hr>");
+
+                $(".searchResultsContainer").append("&nbsp;<p style=\"font-size:20px; color:DarkBlue\">" +
+                  "<a target=\"_blank\" href=\"" + resultData.urls[i] +"\" id=\"" + resultData.ids[i] + "\">" +
+                  resultData.titles[i] + "</a>&nbsp;(" + resultData.relevance[i] + " " + resultData.clusters[i] + ")</p>");
+
+                $(".searchResultsContainer").append("<table><tr><td>" + resultData.abstracts[i] + "</td></tr></table>");
+            }
+        }
+    });
+};
+
+$(document).ready(function(){
+
+    $("#search").click(function(){
+      query = $("#querybox").val();
+      expansion_words = [];
+
+      for (var key in rel_words){
+        if(rel_words[key] > 0){
+          expansion_words.push(key);
+        }
+      }
+
+      get_results();
+    });
+
+    $("#add").click(function(event) {
+      var e = document.getElementById("queries");
+      var selected_query = e.options[e.selectedIndex].value;
+      qid = e.options[e.selectedIndex].id;
+      document.getElementById("querybox").value = selected_query;
+      history_expansion = [];
+      indexes = [];
+    });
+
+    $("#explore").click(function(){
+        rel_words = {};
+        non_rel_words = {};
+        query = $("#querybox").val();
+        var algorithm = document.getElementById("algo").value
+        $.ajax({
+            type: 'POST',
+            url: URL + "graph/",
+            contentType: "applicaton/json; charset=utf-8",
+            data: JSON.stringify({query: query, algorithm: algorithm, indexes: indexes, history_expansion: history_expansion}),
+            success: function(resultData)
+            {
+                colors_map = {};
+                var first = resultData.first;
+                var second = resultData.second;
+                var weights = resultData.weights;
+                var ids = resultData.ids;
+                var names = resultData.names;
+                var flags = resultData.flags;
+                var centrality = resultData.centrality;
+                var colors = resultData.colors;
+                indexes = resultData.indexes;
+
+                var nodes = [];
+                var i;
+                for(i = 0; i < ids.length; i++) {
+                    colors_map[ids[i]] = colorList[parseInt(colors[i])]
+
+                    if(flags[i] == "0") {
+                        if (centrality[i] == "1"){
+                            nodes.push({id: ids[i], label: names[i], value: 30, color: colorList[parseInt(colors[i])]});
+                            //, shape: "circle"
+                        }
+                        else
+                        {
+                            nodes.push({id: ids[i], label: names[i], color: colorList[parseInt(colors[i])]});
+                        }
+                    }
+                    else {
+                        if (centrality[i] == "1"){
+                            nodes.push({id: ids[i], label: names[i], value: 30, shape: "star", color: colorList[parseInt(colors[i])]});
+                        }
+                        else
+                        {
+                            nodes.push({id: ids[i], label: names[i], value: 30, shape: "star", color: colorList[parseInt(colors[i])]});
+                        }
+                    }
+
+                }
+                var visNodes = new vis.DataSet(nodes);
+                var edges = [];
+                for(i = 0; i < first.length; i++) {
+                    edges.push({from: first[i], to: second[i]});
+                    //, value: weights[i]
+                }
+                var visEdges = new vis.DataSet(edges);
+
+                var container = document.getElementById('mynetwork');
+                var data = {
+                    nodes: visNodes,
+                    edges: visEdges
+                };
+
+                var options = {
+                    manipulation: {
+                      editNode: function (data, callback) {
+                        document.getElementById('relButton').onclick = mark_rel.bind(this, data, callback);
+                        document.getElementById('nonButton').onclick = mark_non_rel.bind(this, data, callback);
+                        document.getElementById('cancelButton').onclick = cancelEdit.bind(this, data, callback);
+                        document.getElementById('closeButton').onclick = closeEdit.bind(this, data, callback);
+                        document.getElementById('network-popUp').style.display = 'block';
+                      },
+                      addEdge: false,
+                      editEdge: false,
+                      addNode: false,
+                      deleteNode: false,
+                      deleteEdge: false,
+                      initiallyActive: false,
+                    }
+                };
+
+                var network = new vis.Network(container, data, options);
+            }
+        });
+
+    });
+});
+</script>
+
+
+<script>
+function clearPopUp() {
+  document.getElementById('relButton').onclick = null;
+  document.getElementById('nonButton').onclick = null;
+  document.getElementById('network-popUp').style.display = 'none';
+}
+
+function cancelEdit(data, callback) {
+
+   var orig_color = colors_map[data.id];
+   data.color = orig_color;
+   rel_words[data.label] = 0;
+   non_rel_words[data.label] = 0;
+   clearPopUp();
+   callback(data);
+}
+
+function closeEdit(data, callback){
+   var rel = "";
+   for (var key in rel_words) {
+        if(rel_words[key] > 0){
+            rel += " " + key;
+        }
+   }
+   //alert(rel);
+
+   var non_rel = "";
+   for (var key in non_rel_words) {
+        if(non_rel_words[key] > 0){
+            non_rel += " " + key;
+        }
+   }
+   //alert(non_rel);
+
+   clearPopUp();
+   callback(null);
+}
+
+function mark_rel(data, callback) {
+  data.color = rel_color;
+  rel_words[data.label] = 1;
+  non_rel_words[data.label] = 0;
+  clearPopUp();
+  callback(data);
+}
+
+function mark_non_rel(data, callback) {
+  data.color = non_rel_color;
+  rel_words[data.label] = 0;
+  non_rel_words[data.label] = 1;
+  clearPopUp();
+  callback(data);
+}
+</script>
+
+
+<script>
+$.ajax({
+    type: 'POST',
+    url: URL + "queries/",
+    contentType: "applicaton/json; charset=utf-8",
+    success: function(resultData)
+    {
+        $(".querydiv").append(resultData.output);
+    }
+});
+</script>
+
+</head>
+
+<body>
+<input id="querybox" type="text" size="50" />
+<button type="button" id="explore" value="none"> Explore KB </button>
+<button type="button" id="search" value="none"> Search </button>
+
+<select id="algo">
+  <option value="paths">Paths</option>
+  <option value="pagerank">PageRank</option>
+  <option value="pathsextend">Extend</option>
+  <option value="partial">Partial</option>
+</select>
+
+<div class="querydiv"></div>
+
+<div id="network-popUp">
+  <input type="button" value="Relevant" id="relButton" />
+  <input type="button" value="Not Relevant" id="nonButton" />
+  <input type="button" value="Cancel" id="cancelButton"/>
+  <input type="button" value="Close" id="closeButton"/>
+</div>
+<br/>
+<div id="mynetwork"></div>
+<div class="searchResultsContainer" id="searchResultsContainer"> </div>
+
+</body>
+</html>

@@ -92,7 +92,7 @@ if __name__ == '__main__':
     stopword_dir = '/Users/saarkuzi/acl_retrieval_collection/lemur-stopwords.txt'
     #documents_dir = '/Users/saarkuzi/robust_kb/robust.w2v.phrase.input.txt'
 
-    flask_port = 8097  # should be the same as in 'index.html'
+    flask_port = 8098  # should be the same as in 'index.html'
     search_engine = SearchEngine()
     kb_server = KnowledgeBaseServer(network_dir, search_engine, 5, 10, stopword_dir)
 
